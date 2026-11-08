@@ -1,83 +1,75 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 /* ================= STORY (edit here) =================
- a(m,sky1,sky2,glow,{rain,item}) = image | sc(place,art,[text],[[label,next] x3]) = scene | en(title,mood,art,text) = ending ================= */
+ a(m,sky1,sky2,glow,{rain,item}) = image
+ sc(place,art,[text],[[label,next,clueToGive?,alt?]]) = scene (always 3 choices, always 5 steps)
+ alt = [[[clues needed], endingId], ...]  -> the destination changes depending on clues collected earlier
+ en(title,mood,art,text) = ending ================= */
 const a = (m, s0, s1, c, x = {}) => ({ m, sky: [s0, s1], c, ...x });
-const sc = (place, art, text, ch) => ({ place, art, text, choices: ch.map(([label, next]) => ({ label, next })) });
+const sc = (place, art, text, ch) => ({ place, art, text, choices: ch.map(([label, next, set, alt]) => ({ label, next, set, alt })) });
 const en = (title, mood, art, text) => ({ end: { title, mood }, art, text });
+const FLAG = { diary: "Amna's diary", girl: "the girl's trust", locket: "the silver locket" };
 
 const S = {
   /* Step 1 */
   gate: sc("The Haveli Gate", a("house", "#06141a", "#12363c", "#f2b84b", { rain: 1, item: "key" }),
-    ["You stand outside your late grandmother's haveli. Rain taps the old iron gate.", "A rusted key lies in the mud. Upstairs, a light flickers and footsteps cross the floor."],
-    [["Take the key and walk inside", "hall"], ["Look through the window first", "window"], ["Circle round to the back garden", "garden"]]),
-
+    ["Your grandmother Amna has died, and you have come to her haveli for the first time. Rain hammers the iron gate.", "A rusted key lies in the mud. Upstairs a light flickers, and footsteps cross the floor."],
+    [["Pocket the key and walk in through the front door", "hall"], ["Pocket the key and look through the window", "window"], ["Pocket the key and circle round to the garden", "garden"]]),
   /* Step 2 */
   hall: sc("The Great Hall", a("room", "#1a1410", "#3a2a1c", "#f2b84b"),
-    ["The door groans open. One lamp burns in the hall.", "Footsteps move above you, and a small cellar door waits beside the stairs."],
-    [["Climb the stairs to the attic", "attic"], ["Open the small cellar door", "cellar"], ["Search the dusty library", "library"]]),
+    ["A lamp burns beside an open diary. Footsteps move above you."],
+    [["Read the diary, then climb to the attic", "attic", "diary"], ["Walk through to the dusty library", "library"], ["Slip out the back door to the well", "well"]]),
   window: sc("Outside the Window", a("window", "#06141a", "#0f2a33", "#ffcf70", { rain: 1 }),
-    ["You wipe the dusty glass and see a girl inside who looks exactly like you.", "She waves, then points toward the back of the house."],
-    [["Follow her round to the garden well", "well"], ["Climb in and head for the library", "library"], ["Use the key on the side door to the attic stairs", "attic"]]),
+    ["Through the dusty glass, a girl who looks exactly like you presses her hand to the pane and mouths: please."],
+    [["Trust her and follow her to the well", "well", "girl"], ["Break in and climb to the attic", "attic"], ["Break in and search the library", "library"]]),
   garden: sc("The Back Garden", a("well", "#07161a", "#0d3a34", "#9fe8c8", { rain: 1 }),
-    ["Jasmine hangs over an old stone well. Something hums in the dark water.", "A kitchen door and a vine-covered balcony wait nearby."],
-    [["Peer into the well", "well"], ["Slip through the kitchen door to the cellar", "cellar"], ["Climb the ivy to the library balcony", "library"]]),
-
+    ["Jasmine hangs over an old stone well, and something hums in the dark water."],
+    [["Lean over the well and listen", "well"], ["Climb the ivy to the attic window", "attic"], ["Open the kitchen door to the library", "library"]]),
   /* Step 3 */
   attic: sc("The Attic", a("room", "#1b1012", "#4a2a22", "#ff9a3c"),
-    ["Dust, a sandalwood chest, and a cracked mirror lean against the beams.", "The footsteps stop right behind you."],
-    [["Open the chest and look into the mirror", "mirror"], ["Climb out onto the roof", "rooftop"], ["Pull back the rug and open the trapdoor", "tunnel"]]),
-  cellar: sc("The Cellar", a("frame", "#12060a", "#2a0c14", "#ff5d5d"),
-    ["Cold air. A portrait of your grandmother hangs crooked, and something scratches behind it."],
-    [["Move the painting aside", "tunnel"], ["Follow the scratching with the lamp", "mirror"], ["Run up the back stairs to the roof", "rooftop"]]),
+    ["A sandalwood chest, a cracked mirror, and a photograph of two sisters, one of whom looks just like you."],
+    [["Take the silver locket from the chest", "cellar", "locket"], ["Look into the cracked mirror", "mirror"], ["Climb out onto the roof", "roof"]]),
   library: sc("The Library", a("room", "#14161a", "#2e3a3c", "#ffd27a"),
-    ["Shelves of diaries line the walls. One book is warm to the touch."],
-    [["Read the warm diary", "rooftop"], ["Pull the book out and open the hidden shelf", "tunnel"], ["Hold the book up to the old mirror", "mirror"]]),
-  well: sc("The Well", a("well", "#0a1a22", "#1d4d4a", "#9fe8c8"),
-    ["The water hums your grandmother's lullaby. A rope ladder hangs down the shaft."],
-    [["Climb down the ladder", "tunnel"], ["Drop the key into the water", "rooftop"], ["Sing along softly", "mirror"]]),
-
+    ["Shelves of diaries. One book is warm to the touch, and a hidden shelf clicks behind it."],
+    [["Read the warm diary", "roof", "diary"], ["Open the hidden shelf", "cellar"], ["Hold the book up to the old mirror", "mirror"]]),
+  well: sc("The Old Well", a("well", "#0a1a22", "#1d4d4a", "#9fe8c8", { rain: 1 }),
+    ["The water hums a lullaby. A girl's hand reaches from the shaft, and a rope ladder hangs beside it."],
+    [["Take her hand and climb down", "cellar", "girl"], ["Drop the key into the water", "roof"], ["Sing the lullaby softly", "mirror"]]),
   /* Step 4 */
-  tunnel: sc("The Secret Passage", a("room", "#0c0a10", "#2a2236", "#b8a4ff"),
-    ["A narrow passage smells of jasmine and old smoke. Ahead, the walls whisper."],
-    [["Follow the whispers", "whisper"], ["Light a match and read the carvings", "lastDoor"], ["Turn back toward the light", "dawn"]]),
+  cellar: sc("The Cellar", a("frame", "#12060a", "#2a0c14", "#ff5d5d"),
+    ["A portrait of Amna hangs crooked, and something scratches behind it. Beyond it stands an iron door."],
+    [["Call out: 'Zainab?'", "lastRoom", "girl"], ["Search the shelves with the lamp", "lastRoom", "locket"], ["Ignore it and go straight to the door", "lastRoom"]]),
   mirror: sc("The Mirror Room", a("frame", "#10101c", "#28304a", "#9fd0ff"),
-    ["A tall mirror shows your reflection moving a second too late."],
-    [["Step through the mirror", "lastDoor"], ["Smile at your reflection", "whisper"], ["Cover the mirror with your coat", "dawn"]]),
-  rooftop: sc("The Rooftop", a("house", "#07101c", "#1d3350", "#ffd27a", { rain: 1 }),
-    ["The roof opens to rain and stars. One by one, every window below begins to glow."],
-    [["Lean over the edge and listen", "whisper"], ["Wave to the glowing windows", "dawn"], ["Use the key on the tower door", "lastDoor"]]),
+    ["Your reflection moves a second too late, and behind it an iron door stands open a crack."],
+    [["Whisper the name 'Zainab'", "lastRoom", "girl"], ["Open the music box beneath the mirror", "lastRoom", "locket"], ["Cover the mirror with your coat", "lastRoom"]]),
+  roof: sc("The Rooftop", a("house", "#07101c", "#1d3350", "#ffd27a", { rain: 1 }),
+    ["Rain and stars. One by one, every window below begins to glow, and a tower door stands ajar."],
+    [["Wave to the glowing windows", "lastRoom", "girl"], ["Pick the glinting thing from the gutter", "lastRoom", "locket"], ["Go straight in through the tower door", "lastRoom"]]),
+  /* Step 5: the ending depends on the clues you collected */
+  lastRoom: sc("Zainab's Room", a("room", "#0c1014", "#1d2e36", "#7fd0ff"),
+    ["The iron door opens on a child's room, frozen for fifty years. Zainab waits by the window for you to decide."],
+    [["Open the window and let her go", "endFade", null, [[["girl"], "endPeace"], [["diary"], "endForgive"]]],
+     ["Place what you found in her hand and say, 'You were never forgotten'", "endNothing", null, [[["locket", "diary", "girl"], "endTruth"], [["locket"], "endEmpty"]]],
+     ["Lock the door again, as Grandmother did", "endSilence", null, [[["diary"], "endLocked"], [["girl"], "endBetrayed"]]]]),
 
-  /* Step 5 */
-  lastDoor: sc("The Last Door", a("frame", "#12060a", "#3a1a10", "#ffb15a"),
-    ["A tall door has a keyhole shaped exactly like your key. Behind it, someone is breathing."],
-    [["Unlock it and step inside", "endRoom"], ["Knock and say your grandmother's name", "endKnock"], ["Throw the key away", "endThrow"]]),
-  whisper: sc("The Whisper", a("room", "#0c1014", "#1d2e36", "#7fd0ff"),
-    ["The whisper becomes a voice: 'Choose carefully, little one.'"],
-    [["Promise to stay", "endStay"], ["Ask who she is", "endTruth"], ["Cover your ears and run", "endRun"]]),
-  dawn: sc("The First Light", a("house", "#13233a", "#e08a5a", "#ffd27a"),
-    ["Grey light spreads across the courtyard. The footsteps are close and slow."],
-    [["Stand still and face them", "endWait"], ["Light the old lamp", "endLamp"], ["Walk out through the gate", "endLeave"]]),
-
-  /* Endings: good x3, bad x3, secret x3 */
-  endKnock: en("Grandmother's Name", "good", a("house", "#13233a", "#f2a65a", "#ffd27a", { item: "lantern" }),
-    "The door swings open on its own. A warm hand rests on your head, and a voice says, 'Thank you for coming home.' The haveli exhales, and the rain stops."),
-  endLamp: en("Lamp of Return", "good", a("room", "#1b1012", "#4a2a22", "#ff9a3c", { item: "flame" }),
-    "The lamp lights and a soft shape rises from the shadows. It touches your cheek, then drifts into the flame. The footsteps never return."),
-  endLeave: en("The Long Walk Home", "good", a("house", "#2b2140", "#e08a5a", "#ffd9a0"),
-    "You leave the gate behind you. Next week you return with family, open every window, and the haveli becomes a home again."),
-  endThrow: en("The Lost Key", "bad", a("house", "#14060a", "#3a0f16", "#ff5d5d", { rain: 1, item: "key" }),
-    "The key vanishes into the dark. Every door in the haveli slams shut, and none of them open again. Villagers hear knocking from inside for days."),
-  endStay: en("A Promise Kept", "bad", a("frame", "#12060a", "#2a0c14", "#ff5d5d", { item: "hand" }),
-    "'Stay,' you say, and the house never forgets. At dawn, villagers see a new figure standing beside your grandmother in the old portrait."),
-  endRun: en("Echo", "bad", a("well", "#06101a", "#0a2a3a", "#7fd0ff", { item: "ring" }),
-    "You run, but the whisper keeps pace with you, repeating your name in your own voice. You hear it all the way home, and every night after."),
-  endRoom: en("The Hidden Nursery", "secret", a("room", "#1a2a33", "#e7b87a", "#ffd9a0", { item: "box" }),
-    "Inside is a child's room, untouched for sixty years, and a box of letters. The haveli was waiting to be yours."),
-  endTruth: en("Her Real Name", "secret", a("well", "#0a1a22", "#1d4d4a", "#ffd27a", { item: "box" }),
-    "The girl was your grandmother's lost sister, hidden away and forgotten. Saying her name frees her, and she leaves you the family gold in the well."),
-  endWait: en("Tea for Two", "secret", a("room", "#1a2a33", "#e7b87a", "#ffd9a0", { item: "cup" }),
-    "The footsteps belong to Noor, your grandmother's oldest friend, who kept the house alive for years. Over tea she hands you the deed and the whole family story."),
+  endPeace: en("Open Window", "good", a("house", "#13233a", "#f2a65a", "#ffd27a", { item: "lantern" }),
+    "She trusted you, and the window opens at your touch. Zainab steps into the morning light and does not look back. The rain stops."),
+  endForgive: en("Her Forgiveness", "good", a("room", "#1a2a33", "#e7b87a", "#ffd9a0", { item: "cup" }),
+    "You read Amna's apology aloud as the window opens. Zainab listens, nods, and forgives the sister who can no longer ask."),
+  endTruth: en("Two Sisters", "secret", a("room", "#1a2a33", "#e7b87a", "#ffd9a0", { item: "box" }),
+    "The locket clicks shut in her hand, because you found everything. The family carves Zainab's name beside Amna's, and the haveli becomes a home."),
+  endFade: en("The Girl Who Stayed", "mixed", a("window", "#14060a", "#3a0f16", "#ffcf70", { rain: 1 }),
+    "You open the window, but she never trusted you. She drifts back to the glass, and the haveli keeps her."),
+  endEmpty: en("Empty Hands", "mixed", a("well", "#06101a", "#0a2a3a", "#7fd0ff", { item: "ring" }),
+    "She takes the locket and holds it, but you know too little to tell her why. She stays, quieter now. You promise to return with answers."),
+  endSilence: en("The Quiet House", "mixed", a("house", "#14060a", "#3a0f16", "#ff9a3c", { rain: 1 }),
+    "You lock the door without knowing what was behind it. The footsteps stop, and you never learn why you feel watched for the rest of your life."),
+  endNothing: en("Nothing to Give", "bad", a("frame", "#12060a", "#2a0c14", "#ff5d5d", { item: "hand" }),
+    "You have no locket and no answers. She looks at your empty hands, then at the closing door. The house keeps its secret, and keeps you."),
+  endLocked: en("The Same Mistake", "bad", a("house", "#14060a", "#3a0f16", "#ff5d5d", { rain: 1, item: "key" }),
+    "You read Amna's diary and still copy her. The key turns. Years later, someone else stands at the gate holding a rusted key."),
+  endBetrayed: en("Betrayed", "bad", a("frame", "#12060a", "#2a0c14", "#ff5d5d", { item: "hand" }),
+    "She trusted you, and you locked her in. The house shudders, and when the door opens again, you are the one it keeps."),
 };
 
 const START = "gate";
@@ -86,9 +78,10 @@ const MOOD = {
   good: { t: "Peaceful ending", c: "#8ef0c0" },
   bad: { t: "Dark ending", c: "#ff7b7b" },
   secret: { t: "Secret ending", c: "#ffd27a" },
+  mixed: { t: "Bittersweet ending", c: "#ffb15a" },
 };
-const load = () => { try { return (JSON.parse(localStorage.getItem("haveli-ends-v2")) || []).filter((e) => ENDS.includes(e)); } catch { return []; } };
-const save = (v) => { try { localStorage.setItem("haveli-ends-v2", JSON.stringify(v)); } catch {} };
+const load = () => { try { return (JSON.parse(localStorage.getItem("haveli-ends-v4")) || []).filter((e) => ENDS.includes(e)); } catch { return []; } };
+const save = (v) => { try { localStorage.setItem("haveli-ends-v4", JSON.stringify(v)); } catch {} };
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Lora:wght@400;500&display=swap');
@@ -162,7 +155,7 @@ function Art({ a }) {
   };
   const out = a.m !== "room" && a.m !== "frame";
   return (
-    <svg className="absolute inset-0 h-full w-full" viewBox="0 0 800 600" preserveAspectRatio="xMidYMax slice" overflow="visible" aria-hidden="true">
+    <svg className="absolute inset-0 h-full w-full" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet" overflow="visible" aria-hidden="true">
       <defs>
         <linearGradient id="sk" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="600"><stop offset="0" stopColor={a.sky[0]} /><stop offset="1" stopColor={a.sky[1]} /></linearGradient>
         <radialGradient id="gl"><stop offset="0" stopColor={c} stopOpacity=".45" /><stop offset="1" stopColor={c} stopOpacity="0" /></radialGradient>
@@ -176,9 +169,33 @@ function Art({ a }) {
   );
 }
 
+const CHORD = { calm: [110, 130.8, 164.8], good: [130.8, 164.8, 196], bad: [110, 116.5, 164.8], secret: [146.8, 185, 220], mixed: [110, 138.6, 164.8] };
+
+/* Background sound made in code (Web Audio): rain = filtered noise, music = soft pad that changes with the mood */
+function makeAudio() {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+  const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+  const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource(); noise.buffer = buf; noise.loop = true;
+  const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 1400;
+  const rain = ctx.createGain(); rain.gain.value = 0;
+  noise.connect(hp); hp.connect(rain); rain.connect(master); noise.start();
+  const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 650;
+  const pad = ctx.createGain(); pad.gain.value = 0; lp.connect(pad); pad.connect(master);
+  const oscs = CHORD.calm.map((f) => { const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = f; o.detune.value = (Math.random() - 0.5) * 12; o.connect(lp); o.start(); return o; });
+  return { ctx, master, rain, pad, oscs };
+}
+
 const Btn = ({ children, onClick, disabled, primary }) => (
   <button onClick={onClick} disabled={disabled}
-    className={`rounded-full px-5 py-2.5 text-sm font-semibold transition focus:outline-none focus-visible:ring-4 focus-visible:ring-[#f2b84b]/50 disabled:cursor-not-allowed disabled:opacity-35 ${primary ? "bg-[#f2b84b] text-[#0b1f22] hover:bg-[#ffd27a]" : "border border-[#2c5258] bg-[#0f2a2e]/80 text-[#dcefe8] hover:border-[#f2b84b]"}`}>
+    className={`rounded-full px-4 py-2 text-sm font-semibold transition focus:outline-none focus-visible:ring-4 focus-visible:ring-[#f2b84b]/50 disabled:cursor-not-allowed disabled:opacity-35 ${primary ? "bg-[#f2b84b] text-[#0b1f22] hover:bg-[#ffd27a]" : "border border-[#2c5258] bg-[#0f2a2e]/80 text-[#dcefe8] hover:border-[#f2b84b]"}`}>
+    {children}
+  </button>
+);
+const Chip = ({ on, onClick, children }) => (
+  <button onClick={onClick} aria-pressed={on}
+    className={`rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur transition hover:border-[#f2b84b] ${on === false ? "border-white/15 bg-black/50 text-[#8fb2a7] line-through" : "border-white/25 bg-black/50 text-[#dcefe8]"}`}>
     {children}
   </button>
 );
@@ -189,16 +206,48 @@ export default function App() {
   const [hist, setHist] = useState([]);
   const [pick, setPick] = useState(null);
   const [found, setFound] = useState(load);
+  const [voice, setVoice] = useState(true);
+  const [sound, setSound] = useState(true);
+  const au = useRef(null);
 
   const sc = S[id];
   const end = sc.end;
-  const previewId = pick !== null && !end ? sc.choices[pick].next : id; // selected option's scene
+  const flags = hist.flatMap((h) => { const f = S[h.id].choices[h.pick].set; return f ? [f] : []; }); // clues collected so far
+  const go = (c) => (c.alt?.find(([n]) => n.every((f) => flags.includes(f))) || [0, c.next])[1]; // where this choice leads, given your clues
+  const previewId = pick !== null && !end ? go(sc.choices[pick]) : id;
   const shown = started ? S[previewId] : sc;
-  const step = Math.min(hist.length + 1, 5); // dots filled so far
+  const step = end ? 5 : Math.min(hist.length + 1, 5);
+
+  const begin = () => { try { if (!au.current) au.current = makeAudio(); au.current.ctx.resume(); } catch {} setStarted(true); };
+
+  useEffect(() => () => { window.speechSynthesis?.cancel(); au.current?.ctx.close?.(); }, []);
+
+  // narration: reads each new scene aloud
+  useEffect(() => {
+    const s = window.speechSynthesis;
+    if (!s) return;
+    s.cancel();
+    if (!started || !voice) return;
+    const u = new SpeechSynthesisUtterance(end ? `${end.title}. ${sc.text}` : sc.text.join(" "));
+    u.lang = "en-GB"; u.rate = 0.92; u.pitch = 0.95;
+    s.speak(u);
+    return () => s.cancel();
+  }, [id, started, voice]);
+
+  // ambience: rain outdoors, music mood changes with the ending type
+  useEffect(() => {
+    const A = au.current;
+    if (!A) return;
+    const t = A.ctx.currentTime;
+    A.master.gain.setTargetAtTime(sound ? 0.5 : 0, t, 0.3);
+    CHORD[end ? end.mood : "calm"].forEach((f, i) => A.oscs[i].frequency.setTargetAtTime(f, t, 0.8));
+    A.rain.gain.setTargetAtTime(sc.art.rain ? 0.2 : 0.03, t, 0.6);
+    A.pad.gain.setTargetAtTime(started ? 0.05 : 0, t, 0.6);
+  }, [sound, started, id]);
 
   const next = () => {
     if (pick === null) return;
-    const to = sc.choices[pick].next;
+    const to = go(sc.choices[pick]);
     setHist([...hist, { id, pick }]);
     setId(to);
     setPick(null);
@@ -214,68 +263,81 @@ export default function App() {
   const change = () => (end ? back(false) : setPick(null));
   const restart = () => { setId(START); setHist([]); setPick(null); };
 
+  const info = !started ? (
+    <>
+      <h1 className="fd rise text-3xl font-semibold leading-tight sm:text-4xl">The Haveli Key</h1>
+      <p className="fs rise mt-3 text-lg leading-8 text-[#b7d3ca]" style={{ animationDelay: "200ms" }}>A rainy night, a rusted key, and a secret your grandmother kept for fifty years. Five decisions, nine endings, and what you find along the way changes how it ends.</p>
+      <p className="mt-3 text-sm text-[#8fb2a7]">Endings found: {found.length} of {ENDS.length}{found.length > 0 && <button onClick={() => { setFound([]); save([]); }} className="ml-3 underline hover:text-[#f2b84b]">Reset</button>}</p>
+    </>
+  ) : end ? (
+    <>
+      <h2 className="fd rise text-3xl font-semibold" style={{ color: MOOD[end.mood].c }}>{end.title}</h2>
+      <p className="fs rise mt-3 text-lg leading-8" style={{ animationDelay: "250ms" }}>{sc.text}</p>
+      <p className="rise mt-3 text-sm text-[#8fb2a7]" style={{ animationDelay: "450ms" }}>Endings found: {found.length} of {ENDS.length}</p>
+    </>
+  ) : (
+    <>
+      <div className="fs space-y-2">
+        {sc.text.map((p, i) => <p key={i} className="rise text-[17px] leading-7" style={{ animationDelay: `${100 + i * 250}ms` }}>{p}</p>)}
+      </div>
+      {flags.length > 0 && <p className="mt-3 text-xs text-[#8fb2a7]">Clues found: {[...new Set(flags)].map((f) => FLAG[f]).join(", ")}</p>}
+    </>
+  );
+
+  const options = started && !end && (
+    <div className="flex flex-col gap-2">
+      {sc.choices.map((c, i) => (
+        <button key={c.label} onClick={() => setPick(i)} aria-pressed={pick === i}
+          className={`rise rounded-xl border px-4 py-3 text-left text-[15px] transition focus:outline-none focus-visible:ring-4 focus-visible:ring-[#f2b84b]/40 ${pick === i ? "border-[#f2b84b] bg-[#1d4047]" : "border-[#2c5258] bg-[#0f2a2e] hover:border-[#f2b84b]/70"}`}
+          style={{ animationDelay: `${400 + i * 120}ms` }}>
+          {c.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="relative isolate min-h-screen w-full overflow-x-hidden bg-[#06141a] text-[#dcefe8]" style={{ textAlign: "left" }}>
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#040e10] text-[#dcefe8]" style={{ textAlign: "left" }}>
       <style>{CSS}</style>
-      <div className="fixed inset-0 z-0 overflow-hidden">
+
+      {/* TOP: picture only. BOTTOM: text and choices, so nothing covers the art */}
+      <div className="relative min-h-[40vh] flex-1 overflow-hidden">
         <div key={started ? previewId : "start"} className="fade absolute inset-0"><Art a={shown.art} />{shown.art.rain && <Rain />}</div>
-        <div className="absolute inset-0 bg-gradient-to-t from-[#040e10]/80 via-transparent to-[#040e10]/30" />
+        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#071a1e] to-transparent" />
+        <div className="absolute left-3 top-3 z-20 flex gap-2">
+          <Chip on={voice} onClick={() => setVoice(!voice)}>Voice</Chip>
+          <Chip on={sound} onClick={() => setSound(!sound)}>Sound</Chip>
+        </div>
       </div>
 
-      <main className="relative z-10 mx-auto flex min-h-screen max-w-2xl flex-col justify-end px-5 pb-8 pt-8">
-        {!started ? (
-          <div className="rounded-2xl border border-white/10 bg-[#071a1e]/75 p-8 backdrop-blur-md">
-            <h1 className="fd rise text-4xl font-semibold leading-tight sm:text-5xl">The Haveli Key</h1>
-            <p className="fs rise mt-4 text-lg leading-8 text-[#b7d3ca]" style={{ animationDelay: "200ms" }}>One rainy night, one rusted key, and five decisions. Nine different endings are hidden in the haveli.</p>
-            <div className="rise mt-6 flex items-center gap-4" style={{ animationDelay: "400ms" }}>
-              <Btn primary onClick={() => setStarted(true)}>Start the story</Btn>
-              <span className="text-sm text-[#8fb2a7]">Endings found: {found.length} of {ENDS.length}</span>
-              {found.length > 0 && <button onClick={() => { setFound([]); save([]); }} className="text-sm text-[#8fb2a7] underline hover:text-[#f2b84b]">Reset</button>}
-            </div>
-          </div>
-        ) : (
-          <section key={id} className="rounded-2xl border border-white/10 bg-[#071a1e]/75 p-6 shadow-2xl backdrop-blur-md sm:p-8">
-            <div className="flex items-center justify-between text-sm">
-              <span className="rise italic text-[#f2b84b]">{end ? MOOD[end.mood].t : `Step ${hist.length + 1} of 5: ${sc.place}`}</span>
-              <span className="flex gap-2" role="img" aria-label={`Step ${step} of 5`}>
+      <section className="relative z-10 flex max-h-[48vh] shrink-0 flex-col border-t border-[#2c5258] bg-[#071a1e]">
+        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-5 pt-3">
+          {started && (
+            <div className="flex items-center justify-between pb-2" role="img" aria-label={`Step ${step} of 5`}>
+              <span className="text-sm italic" style={{ color: end ? MOOD[end.mood].c : "#f2b84b" }}>{end ? MOOD[end.mood].t : `Step ${step} of 5: ${sc.place}`}</span>
+              <span className="flex gap-2">
                 {[0, 1, 2, 3, 4].map((n) => (
                   <i key={n} className="h-3 w-3 rounded-full border transition-all duration-500"
                     style={n < step ? { background: end ? MOOD[end.mood].c : "#f2b84b", borderColor: "transparent", boxShadow: "0 0 10px rgba(242,184,75,.5)" } : { borderColor: "#5f8c88" }} />
                 ))}
               </span>
             </div>
-
-            {end ? (
+          )}
+          <div key={id + started} className="min-h-0 flex-1 gap-8 overflow-y-auto pb-3 md:grid md:grid-cols-2">
+            <div>{info}</div>
+            {options && <div className="mt-3 md:mt-0">{options}</div>}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-white/10 py-3">
+            {!started ? <Btn primary onClick={begin}>Start the story</Btn> : (
               <>
-                <h2 className="fd rise mt-4 text-3xl font-semibold sm:text-4xl" style={{ color: MOOD[end.mood].c, animationDelay: "100ms" }}>{end.title}</h2>
-                <p className="fs rise mt-4 text-lg leading-8" style={{ animationDelay: "300ms" }}>{sc.text}</p>
-                <p className="rise mt-4 text-sm text-[#8fb2a7]" style={{ animationDelay: "500ms" }}>Endings found: {found.length} of {ENDS.length}</p>
-              </>
-            ) : (
-              <>
-                <div className="fs mt-4 space-y-3">
-                  {sc.text.map((p, i) => <p key={i} className="rise text-lg leading-8" style={{ animationDelay: `${100 + i * 250}ms` }}>{p}</p>)}
-                </div>
-                <div className="mt-6 flex flex-col gap-2.5">
-                  {sc.choices.map((c, i) => (
-                    <button key={c.label} onClick={() => setPick(i)} aria-pressed={pick === i}
-                      className={`rise rounded-xl border px-5 py-3.5 text-left transition focus:outline-none focus-visible:ring-4 focus-visible:ring-[#f2b84b]/40 ${pick === i ? "border-[#f2b84b] bg-[#1d4047]" : "border-[#2c5258] bg-[#0f2a2e]/80 hover:border-[#f2b84b]/70"}`}
-                      style={{ animationDelay: `${450 + i * 120}ms` }}>
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
+                <Btn onClick={() => back(true)} disabled={!hist.length}>← Previous</Btn>
+                <Btn onClick={change} disabled={!end && pick === null}>Change decision</Btn>
+                {end ? <Btn primary onClick={restart}>Play again</Btn> : <Btn primary onClick={next} disabled={pick === null}>Next →</Btn>}
               </>
             )}
-
-            <div className="mt-6 flex flex-wrap items-center gap-2.5">
-              <Btn onClick={() => back(true)} disabled={!hist.length}>← Previous</Btn>
-              <Btn onClick={change} disabled={!end && pick === null}>Change decision</Btn>
-              {end ? <Btn primary onClick={restart}>Play again</Btn> : <Btn primary onClick={next} disabled={pick === null}>Next →</Btn>}
-            </div>
-          </section>
-        )}
-      </main>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
